@@ -60,7 +60,7 @@
                 <td></td>
                 <td></td>
                 <td></td>
-                <td><button class="btn btn-success" *ngIf="cartItems">Checkout</button></td>
+                <td><button class="btn btn-success" *ngIf="cartItems" (click)="payPalRedirect()">Checkout</button></td>
               </tr>
         </tbody>
     </table>

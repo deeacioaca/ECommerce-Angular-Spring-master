@@ -33,4 +33,10 @@ export class CartItemsService {
     deleteUserCartItem (userId : string, productId : string) : Observable<any> {
         return this.http.delete(`${environment.API_URL}/api/users/${userId}/cart/remove/${productId}`)
     }
+
+    payPalRedirect () {
+        // return this.http.get(`${environment.API_URL}/api/checkout`)
+        var paypalTestUrl = "http://localhost:4200/payout";
+        window.location.href = paypalTestUrl;
+    }
 }

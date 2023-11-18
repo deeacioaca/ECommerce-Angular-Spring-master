@@ -71,4 +71,8 @@ export class CartComponent implements OnInit {
             })
         }
     }
+
+    payPalRedirect () {
+        this.cartItemsService.payPalRedirect()
+    }
 }

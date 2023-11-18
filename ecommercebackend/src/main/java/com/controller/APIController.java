@@ -5,10 +5,12 @@ import com.model.Product;
 import com.model.User;
 import com.model.cart.CartItem;
 import com.model.cart.CartItemPK;
-import com.service.CartItemService;
-import com.service.JwtUserDetailsService;
-import com.service.ProductService;
-import com.service.UserService;
+import com.paypal.api.payments.Links;
+import com.paypal.api.payments.Payment;
+import com.paypal.api.payments.PayoutBatch;
+import com.paypal.base.rest.APIContext;
+import com.paypal.base.rest.PayPalRESTException;
+import com.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,6 +36,9 @@ public class APIController {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private PayPalService payPalService;
+
     public APIController(UserService userService, ProductService productService, CartItemService cartItemService) {
         this.userService = userService;
         this.productService = productService;
@@ -41,7 +46,7 @@ public class APIController {
     }
 
     @PostMapping("/create-token")
-    public ResponseEntity<?> createToken (@RequestBody Map<String, String> user) throws Exception {
+    public ResponseEntity<?> createToken(@RequestBody Map<String, String> user) throws Exception {
         Map<String, Object> tokenResponse = new HashMap<>();
         final UserDetails userDetails = jwtUserDetailsService.loadUserByUsername(user.get("username"));
         final String token = jwtUtil.generateToken(userDetails);
@@ -51,17 +56,17 @@ public class APIController {
     }
 
     @GetMapping("/users")
-    public ResponseEntity<List<User>> getUsers () {
+    public ResponseEntity<List<User>> getUsers() {
         return new ResponseEntity<>(userService.getUsers(), HttpStatus.OK);
     }
 
     @GetMapping("/users/{id}")
-    public ResponseEntity<User> getUser (@PathVariable("id") Long id) {
+    public ResponseEntity<User> getUser(@PathVariable("id") Long id) {
         return new ResponseEntity<>(userService.getUser(id), HttpStatus.OK);
     }
 
     @PutMapping("/users/{id}")
-    public ResponseEntity<User> updateUser (@PathVariable("id") Long id, @RequestBody Map<String, Object> user) {
+    public ResponseEntity<User> updateUser(@PathVariable("id") Long id, @RequestBody Map<String, Object> user) {
         User newUser = new User(
                 (String) user.get("username"),
                 (String) user.get("password"),
@@ -75,14 +80,14 @@ public class APIController {
     }
 
     @GetMapping("/users/{id}/cart")
-    public ResponseEntity<List<CartItem>> getUserCart (@PathVariable("id") Long id) {
+    public ResponseEntity<List<CartItem>> getUserCart(@PathVariable("id") Long id) {
         System.out.println(userService.getUser(id).getCartItems().size());
         return new ResponseEntity<>(userService.getUser(id).getCartItems(), HttpStatus.OK);
     }
 
     @PostMapping("/users/{id}/cart/add/{productId}")
-    public ResponseEntity<User> addToUserCart (@PathVariable("id") Long id,
-                                               @PathVariable("productId") Long productId) {
+    public ResponseEntity<User> addToUserCart(@PathVariable("id") Long id,
+                                              @PathVariable("productId") Long productId) {
         User user = userService.getUser(id);
         Product product = productService.getProduct(productId);
 
@@ -93,9 +98,9 @@ public class APIController {
     }
 
     @PutMapping("/users/{id}/cart/update/{productId}")
-    public ResponseEntity<User> updateCartItem (@PathVariable("id") Long id,
-                                                @PathVariable("productId") Long productId,
-                                                @RequestBody CartItem cartItem) {
+    public ResponseEntity<User> updateCartItem(@PathVariable("id") Long id,
+                                               @PathVariable("productId") Long productId,
+                                               @RequestBody CartItem cartItem) {
         User user = userService.getUser(id);
         Product product = productService.getProduct(productId);
 
@@ -106,8 +111,8 @@ public class APIController {
     }
 
     @DeleteMapping("/users/{id}/cart/remove/{productId}")
-    public ResponseEntity<User> removeFromUserCart (@PathVariable("id") Long id,
-                                                    @PathVariable("productId") Long productId) {
+    public ResponseEntity<User> removeFromUserCart(@PathVariable("id") Long id,
+                                                   @PathVariable("productId") Long productId) {
         cartItemService.deleteCartItem(id, productId);
 
         return new ResponseEntity<>(userService.getUser(id), HttpStatus.OK);
@@ -115,47 +120,74 @@ public class APIController {
 
     @Transactional
     @DeleteMapping("/users/{id}")
-    public ResponseEntity<?> deleteUser (@PathVariable("id") Long id) {
+    public ResponseEntity<?> deleteUser(@PathVariable("id") Long id) {
         userService.deleteUser(id);
         return new ResponseEntity<>(HttpStatus.OK);
     }
 
     @GetMapping("/products")
-    public ResponseEntity<List<Product>> getProducts () {
+    public ResponseEntity<List<Product>> getProducts() {
         return new ResponseEntity<>(productService.getProducts(), HttpStatus.OK);
     }
 
     @GetMapping("/products/{id}")
-    public ResponseEntity<Product> getProduct (@PathVariable("id") Long id) {
+    public ResponseEntity<Product> getProduct(@PathVariable("id") Long id) {
         return new ResponseEntity<>(productService.getProduct(id), HttpStatus.OK);
     }
 
     @PostMapping("/products")
-    public ResponseEntity<Product> addProduct (@RequestBody Product product) {
+    public ResponseEntity<Product> addProduct(@RequestBody Product product) {
         return new ResponseEntity<>(productService.addProduct(product), HttpStatus.OK);
     }
 
     @PutMapping("/products/{id}")
-    public ResponseEntity<Product> updateProduct (@PathVariable("id") Long id, @RequestBody Product product) {
+    public ResponseEntity<Product> updateProduct(@PathVariable("id") Long id, @RequestBody Product product) {
         return new ResponseEntity<>(productService.updateProduct(id, product), HttpStatus.OK);
     }
 
     @Transactional
     @DeleteMapping("/products/{id}")
-    public ResponseEntity<?> deleteProduct (@PathVariable("id") Long id) {
+    public ResponseEntity<?> deleteProduct(@PathVariable("id") Long id) {
         productService.deleteProduct(id);
         return new ResponseEntity<>(HttpStatus.OK);
     }
 
     @GetMapping("/cart-items")
-    public ResponseEntity<List<CartItem>> getCartItems () {
+    public ResponseEntity<List<CartItem>> getCartItems() {
         return ResponseEntity.ok(cartItemService.getCartItems());
     }
 
     @CrossOrigin
     @GetMapping("/cart-items/{id}/{productId}")
-    public ResponseEntity<CartItem> getCartItem (@PathVariable("id") Long id,
-                                                 @PathVariable("productId") Long productId) {
+    public ResponseEntity<CartItem> getCartItem(@PathVariable("id") Long id,
+                                                @PathVariable("productId") Long productId) {
         return ResponseEntity.ok(cartItemService.getCartItem(id, productId));
+    }
+
+    @RequestMapping(value = "/pay", method = RequestMethod.POST)
+    public String payment(@RequestBody CartItem cartItem) {
+        try {
+            Payment payment = payPalService.createPayment(cartItem.getTotalPrice(), cartItem.getProduct().getDescription());
+            for (Links link : payment.getLinks()) {
+                if (link.getRel().equals("approval_url")) {
+                    return "redirect:" + link.getHref();
+                }
+            }
+
+        } catch (PayPalRESTException e) {
+
+            e.printStackTrace();
+        }
+        return "redirect:/";
+    }
+
+    @RequestMapping(value = "/payout", method = RequestMethod.POST)
+    public PayoutBatch payout(@RequestBody CartItem cartItem) {
+        try {
+            return payPalService.payout(cartItem.getTotalPrice(), "EUR", cartItem.getProduct().getDescription());
+        } catch (PayPalRESTException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 }
